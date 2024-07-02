@@ -24,11 +24,12 @@ type generator struct {
 	registerFuncSuffix string
 	allowPatchFeature  bool
 	standalone         bool
+	pathPrefix         string
 }
 
 // New returns a new generator which generates grpc gateway files.
 func New(reg *descriptor.Registry, useRequestContext bool, registerFuncSuffix string,
-	allowPatchFeature, standalone bool) gen.Generator {
+	allowPatchFeature, standalone bool, pathPrefix string) gen.Generator {
 	var imports []descriptor.GoPackage
 	for _, pkgpath := range []string{
 		"io",
@@ -61,6 +62,7 @@ func New(reg *descriptor.Registry, useRequestContext bool, registerFuncSuffix st
 		registerFuncSuffix: registerFuncSuffix,
 		allowPatchFeature:  allowPatchFeature,
 		standalone:         standalone,
+		pathPrefix:         pathPrefix,
 	}
 }
 
@@ -123,6 +125,7 @@ func (g *generator) generate(file *descriptor.File) (string, error) {
 		UseRequestContext:  g.useRequestContext,
 		RegisterFuncSuffix: g.registerFuncSuffix,
 		AllowPatchFeature:  g.allowPatchFeature,
+		PathPrefix:         g.pathPrefix,
 	}
 	if g.reg != nil {
 		params.OmitPackageDoc = g.reg.GetOmitPackageDoc()

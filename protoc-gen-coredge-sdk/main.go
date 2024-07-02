@@ -26,6 +26,7 @@ import (
 )
 
 var (
+	pathPrefix                 = flag.String("path_prefix", "", "The prefix used for the paths in the URLs of the REST APIs exposed by a microservice.")
 	registerFuncSuffix         = flag.String("register_func_suffix", "Handler", "used to construct names of generated Register*<Suffix> methods.")
 	useRequestContext          = flag.Bool("request_context", true, "determine whether to use http.Request's context or not")
 	allowDeleteBody            = flag.Bool("allow_delete_body", false, "unless set, HTTP DELETE methods may not have a body")
@@ -80,7 +81,7 @@ func main() {
 
 		codegenerator.SetSupportedFeaturesOnPluginGen(gen)
 
-		generator := gengateway.New(reg, *useRequestContext, *registerFuncSuffix, *allowPatchFeature, *standalone)
+		generator := gengateway.New(reg, *useRequestContext, *registerFuncSuffix, *allowPatchFeature, *standalone, *pathPrefix)
 
 		if grpclog.V(1) {
 			grpclog.Infof("Parsing code generator request")

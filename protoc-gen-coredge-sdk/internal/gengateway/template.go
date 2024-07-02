@@ -20,6 +20,7 @@ type param struct {
 	RegisterFuncSuffix string
 	AllowPatchFeature  bool
 	OmitPackageDoc     bool
+	PathPrefix         string
 }
 
 type binding struct {
@@ -151,6 +152,7 @@ type trailerParams struct {
 	Services           []*descriptor.Service
 	UseRequestContext  bool
 	RegisterFuncSuffix string
+	PathPrefix         string
 }
 
 func applyTemplate(p param, reg *descriptor.Registry) (string, error) {
@@ -195,6 +197,7 @@ func applyTemplate(p param, reg *descriptor.Registry) (string, error) {
 		Services:           targetServices,
 		UseRequestContext:  p.UseRequestContext,
 		RegisterFuncSuffix: p.RegisterFuncSuffix,
+		PathPrefix:         p.PathPrefix,
 	}
 	// SDK Client
 	if err := sdkClient.Execute(w, tp); err != nil {
@@ -217,7 +220,7 @@ using APIs defined as part of protobuf
 */{{end}}
 package {{.GoPkg.Name}}
 import (
-	_ "bytes"
+	"bytes"
 
 	{{range $i := .Imports}}{{if $i.Standard}}{{$i | printf "%s\n"}}{{end}}{{end}}
 
@@ -240,11 +243,15 @@ type {{$svc.GetName}}SdkClient interface {
 
 type impl{{$svc.GetName}}Client struct {
 	client gosdkclient.SdkClient
+	pathPrefix 	string
 }
 
 func New{{$svc.GetName}}SdkClient(client gosdkclient.SdkClient) {{$svc.GetName}}SdkClient {
 	return &impl{{$svc.GetName}}Client{
 		client: client,
+		{{- if $.PathPrefix}}
+		pathPrefix: "{{$.PathPrefix}}",
+		{{- end}}
 	}
 }
 
@@ -255,6 +262,9 @@ func (c *impl{{$svc.GetName}}Client) {{$m.Name}}(req *{{$m.RequestType.GoType $m
 	subUrl := "{{ $b.PathTmpl.Template }}"
 	{{- range $p := $b.PathParams }}
 	subUrl = strings.Replace(subUrl, "{"+"{{$p.Target.Name}}"+"}", req.{{GetCamelcase $p.Target.Name}}, -1)
+	{{- end }}
+	{{- if $.PathPrefix}}
+	subUrl = c.pathPrefix + subUrl
 	{{- end }}
 	marshaller := &runtime.JSONPb{}
 	{{- if $b.Body }}
@@ -285,5 +295,4 @@ func (c *impl{{$svc.GetName}}Client) {{$m.Name}}(req *{{$m.RequestType.GoType $m
 {{- end}}
 
 {{end}}`))
-
 )
