@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"path"
 	"strings"
 	"text/template"
 
@@ -38,6 +39,22 @@ func (b binding) GetBodyFieldPath() string {
 
 func GetCamelcase(in string) string {
 	return casing.Camel(in)
+}
+
+// get query params of a given method
+func GetQueryParams(m descriptor.Method) []string {
+	b := m.Bindings[0]
+	pathParams := make(map[string]bool)
+	for _, p := range b.PathParams {
+		pathParams[p.FieldPath.String()] = true
+	}
+	queryParams := []string{}
+	for _, f := range m.RequestType.Fields {
+		if _, ok := pathParams[f.GetName()]; !ok {
+			queryParams = append(queryParams, f.GetName())
+		}
+	}
+	return queryParams
 }
 
 // GetBodyFieldStructName returns the binding body's struct field name.
@@ -155,6 +172,36 @@ type trailerParams struct {
 
 func applyTemplate(p param, reg *descriptor.Registry) (string, error) {
 	w := bytes.NewBuffer(nil)
+	hasQueryParams := false
+	for _, svc := range p.Services {
+		for _, meth := range svc.Methods {
+			if len(GetQueryParams(*meth)) > 0 {
+				hasQueryParams = true
+			}
+		}
+	}
+	if hasQueryParams {
+		for _, pkgpath := range []string{
+			"fmt",
+			"net/url",
+		} {
+			pkg := descriptor.GoPackage{
+				Path: pkgpath,
+				Name: path.Base(pkgpath),
+			}
+			if err := reg.ReserveGoPackageAlias(pkg.Name, pkg.Path); err != nil {
+				for i := 0; ; i++ {
+					alias := fmt.Sprintf("%s_%d", pkg.Name, i)
+					if err := reg.ReserveGoPackageAlias(alias, pkg.Path); err != nil {
+						continue
+					}
+					pkg.Alias = alias
+					break
+				}
+			}
+			p.Imports = append(p.Imports, pkg)
+		}
+	}
 	if err := headerTemplate.Execute(w, p); err != nil {
 		return "", err
 	}
@@ -217,7 +264,7 @@ using APIs defined as part of protobuf
 */{{end}}
 package {{.GoPkg.Name}}
 import (
-	_ "bytes"
+	"bytes"
 
 	{{range $i := .Imports}}{{if $i.Standard}}{{$i | printf "%s\n"}}{{end}}{{end}}
 
@@ -229,6 +276,7 @@ import (
 	sdkClient = template.Must(template.New("sdk-client").Funcs(
 		template.FuncMap{
 			"GetCamelcase": GetCamelcase,
+			"GetQueryParams": GetQueryParams,
 		},
 	).Parse(`
 {{range $svc := .Services}}
@@ -262,6 +310,14 @@ func (c *impl{{$svc.GetName}}Client) {{$m.Name}}(req *{{$m.RequestType.GoType $m
 	r, _ := http.NewRequest({{$b.HTTPMethod | printf "%q"}}, subUrl, bytes.NewBuffer(jsonData))
 	{{- else }}
 	r, _ := http.NewRequest({{$b.HTTPMethod | printf "%q"}}, subUrl, nil)
+	{{- $QueryParams := GetQueryParams $m}}
+	{{- if $QueryParams}}
+	q := url.Values{}
+	{{- range $p := $QueryParams}}
+	q.Add("{{$p}}",  fmt.Sprintf("%v", req.{{GetCamelcase $p}} ))
+	{{- end}}
+	r.URL.RawQuery = q.Encode()
+	{{- end}}
 	{{- end }}
 	r.Header.Set("Content-Type", "application/json")
 	resp, err := c.client.PerformReq(r)
